@@ -1,0 +1,7 @@
+interface:
+  display_name: "Harden"
+  short_description: "Loop fresh codex-exec sub-agents until clean"
+  default_prompt: "Use $harden [path/to/subfolder] to loop fresh critique-then-fix codex exec sub-agents over the current diff until only minor issues remain."
+
+policy:
+  allow_implicit_invocation: true

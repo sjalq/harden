@@ -1,0 +1,7 @@
+interface:
+  display_name: "Critique"
+  short_description: "One-pass severity-tagged code review"
+  default_prompt: "Use $critique [commit/range] to run one thorough review pass over the current diff, with HIGH/MEDIUM/LOW findings and file:line references."
+
+policy:
+  allow_implicit_invocation: true

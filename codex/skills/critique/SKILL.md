@@ -41,20 +41,31 @@ OUT="$(mktemp -t critique-XXXX).msg"
 
 codex exec \
   --skip-git-repo-check \
-  -s read-only \
+  --dangerously-bypass-approvals-and-sandbox \
   -C "$REPO_ROOT" \
   -o "$OUT" \
   "Critically inspect the code changes (git diff, or git diff --staged if
    nothing unstaged, or git diff HEAD~1 if nothing pending). Classify each
    issue HIGH / MEDIUM / LOW across: goal achievement, error handling,
-   logic issues, security concerns, code quality, missing pieces. Do NOT
-   edit any files — this is read-only review. Report findings with
-   file:line references."
+   logic issues, security concerns, code quality, missing pieces. This is a
+   READ-ONLY review: do not run any command that writes, moves, or deletes a
+   file, and do not edit anything — only inspect and report. Report findings
+   with file:line references."
 
 cat "$OUT"
 ```
 
-Use `-s read-only` here (unlike `harden`, which needs `workspace-write` to
-apply fixes) since a pure critique pass should never modify the repo. This
-is exactly what the `harden` skill does for each loop iteration — see that
-skill if you need fix-and-reloop behavior instead of a single report.
+If you (the orchestrator) are not yourself already sandboxed, `-s read-only`
+is the more conservative choice here and enforces no-edits at the OS level
+instead of by instruction alone — use it in that case. But if you're running
+nested inside another sandboxed session (the common case — see the `harden`
+skill's "Gotcha" section), a nested `-s read-only` fails every shell command
+with `sandbox_apply: Operation not permitted` before it ever sees the diff,
+the same way nested `workspace-write` does. `--dangerously-bypass-approvals-
+and-sandbox` is the fix, same rationale as `harden`: you're already
+externally sandboxed, so the "no edits" guarantee now rests on the explicit
+instruction above rather than the OS sandbox — treat that instruction as
+load-bearing, don't drop it when adapting this prompt. This is exactly what
+the `harden` skill does per loop iteration (with `workspace-write` semantics
+instead, since it needs to apply fixes) — see that skill for fix-and-reloop
+behavior instead of a single report.

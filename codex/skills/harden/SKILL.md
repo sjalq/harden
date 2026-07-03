@@ -67,7 +67,7 @@ stop. Track `PASS_N` starting at 1.
 
    codex exec \
      --skip-git-repo-check \
-     -s workspace-write \
+     --dangerously-bypass-approvals-and-sandbox \
      -C "$REPO_ROOT" \
      -o "$OUT" \
      "$(cat <<PROMPT
@@ -92,6 +92,11 @@ stop. Track `PASS_N` starting at 1.
      VERDICT: FIXED   (fixed >=1 HIGH/MEDIUM)
    followed by a short bullet list of what was found + fixed, and any
    remaining LOW issues.
+
+   If you cannot run shell commands at all (sandbox/permission failure before
+   you ever saw the diff), do NOT report VERDICT: CLEAN — that would be a
+   lie. Instead your final message must be exactly: VERDICT: ERROR followed
+   by what failed.
    PROMPT
    )"
 
@@ -99,24 +104,42 @@ stop. Track `PASS_N` starting at 1.
    echo "$PASS_RESULT"
    ```
 
-   Use `-s workspace-write` so the subprocess can actually apply fixes.
-   `-o "$OUT"` writes just the agent's final message to a file so you can
-   read the verdict without wading through the subprocess's own tool-call
-   transcript.
+   `--dangerously-bypass-approvals-and-sandbox` on the *nested* call is
+   required, not optional — see the Gotcha below for why. `-o "$OUT"` writes
+   just the agent's final message to a file so you can read the verdict
+   without wading through the subprocess's own tool-call transcript.
 
-2. Read `$PASS_RESULT`:
-   - Contains `VERDICT: FIXED` → increment `PASS_N`, go back to step 1 with a
-     **new** `mktemp` output file and a **new** `codex exec` call (fixes may
-     have introduced or exposed new issues — the next pass needs fresh eyes
-     on the now-changed diff).
-   - Contains `VERDICT: CLEAN` → stop. Only minor issues remain.
-   - Contains neither (subprocess crashed, timed out, or ignored the format)
-     → treat as a failed pass, report it, and stop rather than looping
-     blindly.
+2. Read `$PASS_RESULT`, and don't take a `VERDICT:` line on faith — a
+   subprocess that never actually ran a command can still emit the right
+   words. Cross-check with your own `git diff --stat` / `git status
+   --short` (you're allowed normal repo-inspection commands in the
+   orchestrator — you just can't do the *critique itself* here):
+   - Contains `VERDICT: FIXED` → confirm the worktree actually changed
+     (`git status --short` shows modified files), then increment `PASS_N`
+     and go back to step 1 with a **new** `mktemp` output file and a **new**
+     `codex exec` call — fixes may have introduced or exposed new issues,
+     so the next pass needs fresh eyes on the now-changed diff.
+   - Contains `VERDICT: CLEAN` with no working-tree changes since the pass
+     started → stop. Only minor issues remain.
+   - Contains `VERDICT: CLEAN` but the pass's own transcript shows every
+     shell command failing (sandbox/permission errors, no tool calls ran at
+     all) → this is a **false clean**, not a real pass. Treat it the same as
+     `VERDICT: ERROR` below, do not stop the loop believing the code is
+     hardened.
+   - Contains `VERDICT: ERROR`, or neither CLEAN nor FIXED (subprocess
+     crashed, timed out, ignored the format) → check whether the failure
+     text is a **connection-level** error (e.g. `stream disconnected before
+     completion`, `error sending request for url`, DNS failures) rather
+     than a real review problem. These are transient backend/network
+     hiccups, not findings about the code. Retry the *same* pass (same
+     `PASS_N`, fresh `mktemp` file, identical prompt) up to 2 extra times.
+     If it still hasn't produced a real verdict after 3 total attempts, only
+     then treat this pass as a genuine failure, report it, and stop rather
+     than looping blindly.
 
-3. Safety stop: if `PASS_N` reaches 5, stop and report — a still-dirty diff
-   after 5 fresh independent passes means something needs a human, not
-   another automated round.
+3. Safety stop: if `PASS_N` reaches 5 real (non-retry) passes, stop and
+   report — a still-dirty diff after 5 fresh independent passes means
+   something needs a human, not another automated round.
 
 ## REPORT
 
@@ -130,3 +153,48 @@ state (no commits/staging) unless the user's arguments say to.
   system-wide) — nested `codex exec` calls inherit the same `$CODEX_HOME`
   and need no extra setup.
 - Run from inside a git repository (or pass `-C` to point at one).
+
+## Gotcha: nested `codex exec` must bypass its own sandbox
+
+You (the orchestrator) are almost always already running inside a sandbox
+yourself (e.g. launched with `-s workspace-write`, or as someone's
+sub-agent). macOS Seatbelt sandboxes don't nest: a `codex exec` subprocess
+that tries to apply its *own* `workspace-write`/`read-only` sandbox while
+already running inside your sandbox fails every single shell command,
+including `git diff`, with `sandbox_apply: Operation not permitted` — the
+subprocess never sees the diff at all. Confirmed by hand on macOS: a
+sandboxed `-s workspace-write` inner call fails this way 100% of the time
+when nested; the same call with `--dangerously-bypass-approvals-and-sandbox`
+instead succeeds. That flag's own `--help` text says it's "intended solely
+for running in environments that are externally sandboxed" — which is
+exactly this situation, since you're already constraining the whole process
+tree. That's why the command template above uses it instead of `-s
+workspace-write`, and why step 2 above treats a `VERDICT: CLEAN` with no
+actual tool calls as untrustworthy rather than a real pass — a broken
+subprocess can still hallucinate the right verdict text.
+
+A second, independent failure mode with the same symptom (no verdict, no
+file changes): if the orchestrating sandbox blocks outbound network for
+child processes, the nested call fails with `stream disconnected before
+completion: error sending request for url (.../responses)` instead.
+`--dangerously-bypass-approvals-and-sandbox` fixes this too, since it
+removes the sandbox (and its network restriction) entirely for that one
+nested call — it does not touch how you, the orchestrator, are sandboxed.
+
+## Known limitation: nested calls can be network-flaky
+
+Separately from the sandboxing issue above, a `codex exec` subprocess
+launched while *another* `codex` process (you, the orchestrator) is itself
+mid-turn can intermittently fail to reach the backend — `stream
+disconnected before completion` — even with the sandbox fix applied and
+even when the identical command run standalone (not nested) succeeds
+immediately. Observed directly during development of this skill: the same
+critique-and-fix call succeeded in under 30s every time it was run
+standalone, but failed 3 times in a row when nested inside a live
+interactive `codex` TUI session, and once inside a `codex exec`-driven
+orchestrator too (hung past 3 minutes with no output). This looks like a
+concurrency/connection limit on running two codex sessions under the same
+auth at once, not a problem with the prompt or the command shape. The
+retry-up-to-3× logic in step 2 exists specifically to absorb this. If you
+hit it constantly in your environment, that's a real, still-open rough edge
+in nesting `codex exec` — not a sign the skill is misconfigured.

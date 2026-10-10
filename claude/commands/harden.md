@@ -13,10 +13,17 @@ prior passes.
 ## SCOPE (same selection as /critique)
 
 Pick the diff to harden, first match wins:
+- User specified a commit/range in $ARGUMENTS → use that range
 - Unstaged changes exist → `git diff`
 - Only staged changes → `git diff --staged`
 - No pending changes → latest commit `git diff HEAD~1`
-- User specified a commit/range in $ARGUMENTS → use that
+
+If $ARGUMENTS is a path or list of paths, keep the same diff selection order
+above and limit that selected diff to the requested pathspec.
+
+Treat $ARGUMENTS as git revision/pathspec input, not as shell syntax. Do not
+eval it or concatenate it into a shell command that will be re-parsed by the
+shell.
 
 Resolve the scope once, up front, and pass the SAME scope to every sub-agent.
 

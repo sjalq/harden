@@ -45,6 +45,9 @@ $harden                  # Codex: same, short form
 $critique                # Codex: same, short form
 ```
 
+An explicit commit/range argument selects the diff. A path argument limits the
+normal unstaged/staged/latest commit diff selection.
+
 ## Why "fresh sub-agent per pass" matters
 
 A hardening loop that critiques its own fixes with the same context that

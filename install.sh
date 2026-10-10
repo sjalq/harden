@@ -14,10 +14,12 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 DO_CLAUDE=0
 DO_CODEX=0
+REQUESTED_CLAUDE=0
+REQUESTED_CODEX=0
 for arg in "$@"; do
   case "$arg" in
-    --claude) DO_CLAUDE=1 ;;
-    --codex) DO_CODEX=1 ;;
+    --claude) DO_CLAUDE=1; REQUESTED_CLAUDE=1 ;;
+    --codex) DO_CODEX=1; REQUESTED_CODEX=1 ;;
     *) echo "Unknown flag: $arg" >&2; exit 1 ;;
   esac
 done
@@ -27,7 +29,7 @@ if [ "$DO_CLAUDE" -eq 0 ] && [ "$DO_CODEX" -eq 0 ]; then
 fi
 
 if [ "$DO_CLAUDE" -eq 1 ]; then
-  if command -v claude >/dev/null 2>&1 || [ -d "$HOME/.claude" ]; then
+  if [ "$REQUESTED_CLAUDE" -eq 1 ] || command -v claude >/dev/null 2>&1 || [ -d "$HOME/.claude" ]; then
     CLAUDE_COMMANDS_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/commands"
     mkdir -p "$CLAUDE_COMMANDS_DIR"
     cp -v "$REPO_ROOT/claude/commands/harden.md" "$CLAUDE_COMMANDS_DIR/harden.md"
@@ -39,7 +41,7 @@ if [ "$DO_CLAUDE" -eq 1 ]; then
 fi
 
 if [ "$DO_CODEX" -eq 1 ]; then
-  if command -v codex >/dev/null 2>&1 || [ -d "$HOME/.codex" ]; then
+  if [ "$REQUESTED_CODEX" -eq 1 ] || command -v codex >/dev/null 2>&1 || [ -d "$HOME/.codex" ]; then
     CODEX_SKILLS_DIR="${CODEX_HOME:-$HOME/.codex}/skills"
     mkdir -p "$CODEX_SKILLS_DIR"
     rm -rf "$CODEX_SKILLS_DIR/harden" "$CODEX_SKILLS_DIR/critique"

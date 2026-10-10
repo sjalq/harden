@@ -6,10 +6,17 @@ allowed-tools: Read, Bash, Grep, Glob
 Critically inspect code changes and determine if they accomplish their goal and if they have any serious deficits.
 
 **What to inspect:**
+- If the user specifies a commit/range, review that range first
+  (e.g., `git diff <commit>`)
+- If the user specifies a path or list of paths, keep the same diff selection
+  order below and limit that selected diff to the requested pathspec
 - If there are unstaged changes, review those (`git diff`)
 - If there are only staged changes, review those (`git diff --staged`)
 - If there are no pending changes, review the latest commit (`git diff HEAD~1`)
-- If the user specifies a commit/range, use that (e.g., `git diff <commit>`)
+
+Treat user input as git revision/pathspec input, not as shell syntax. Do not
+eval it or concatenate it into a shell command that will be re-parsed by the
+shell.
 
 **Focus areas:**
 1. **Goal Achievement** - Do the changes accomplish what they appear to be trying to do?

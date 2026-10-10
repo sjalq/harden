@@ -39,18 +39,28 @@ pass:
 
 ```bash
 cd "$(git rev-parse --show-toplevel)"
-if [ -n "$(git diff)" ]; then
+if [ -n "$ARGUMENTS" ]; then
+  SCOPE_DESC="user-specified range/pathspec: $ARGUMENTS"
+  SCOPE_CMD="user-specified scope; do not run raw user text as a shell command"
+  # Treat ARGUMENTS as git revision/pathspec input, never as shell syntax.
+  # Commit/range arguments select the diff. Pathspec arguments limit the
+  # normal unstaged/staged/latest-commit diff selection to those paths.
+  # Do not eval ARGUMENTS; pass parsed revision/pathspec tokens to git safely.
+elif [ -n "$(git diff)" ]; then
   SCOPE_DESC="unstaged changes"; SCOPE_CMD="git diff"
 elif [ -n "$(git diff --staged)" ]; then
   SCOPE_DESC="staged changes"; SCOPE_CMD="git diff --staged"
-elif [ -n "$ARGUMENTS" ]; then
-  SCOPE_DESC="user-specified range: $ARGUMENTS"; SCOPE_CMD="git diff $ARGUMENTS"
 else
   SCOPE_DESC="latest commit"; SCOPE_CMD="git diff HEAD~1"
 fi
 ```
 
-If the user gave an explicit commit/range/path argument, that always wins.
+If the user gave an explicit commit/range argument, that selects the diff. If
+the user gave a pathspec argument, keep the normal unstaged/staged/latest
+commit selection order and limit that diff to the requested paths. Do not
+build a shell command by appending raw user text to `git diff`; pass
+revision/pathspec tokens to git safely, or ask for clarification if the scope
+is ambiguous.
 
 ## THE LOOP
 
@@ -72,7 +82,11 @@ stop. Track `PASS_N` starting at 1.
      -o "$OUT" \
      "$(cat <<PROMPT
    Critically inspect the code changes below ($SCOPE_DESC). Get the exact
-   diff yourself first by running: $SCOPE_CMD
+   diff yourself first. If the scope is user-specified, treat it as git
+   revision/pathspec input and pass it to git safely without eval or shell
+   re-parsing. Commit/range arguments select the diff; pathspec arguments
+   limit the normal diff selection to those paths. Otherwise use the resolved
+   scope command: $SCOPE_CMD
 
    Classify each issue HIGH / MEDIUM / LOW:
    - Goal Achievement: do the changes accomplish what they appear to be trying to do?

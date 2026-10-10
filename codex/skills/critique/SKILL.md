@@ -13,10 +13,17 @@ does not fix anything and it does not loop. For an automated fix loop, use
 the `harden` skill instead.
 
 **What to inspect:**
+- If the user specifies a commit/range, review that range first
+  (e.g., `git diff <commit>`)
+- If the user specifies a path or list of paths, keep the same diff selection
+  order below and limit that selected diff to the requested pathspec
 - If there are unstaged changes, review those (`git diff`)
 - If there are only staged changes, review those (`git diff --staged`)
 - If there are no pending changes, review the latest commit (`git diff HEAD~1`)
-- If the user specifies a commit/range, use that (e.g., `git diff <commit>`)
+
+Treat user input as git revision/pathspec input, not as shell syntax. Do not
+eval it or concatenate it into a shell command that will be re-parsed by the
+shell.
 
 **Focus areas:**
 1. **Goal Achievement** - Do the changes accomplish what they appear to be trying to do?
@@ -44,13 +51,17 @@ codex exec \
   --dangerously-bypass-approvals-and-sandbox \
   -C "$REPO_ROOT" \
   -o "$OUT" \
-  "Critically inspect the code changes (git diff, or git diff --staged if
-   nothing unstaged, or git diff HEAD~1 if nothing pending). Classify each
-   issue HIGH / MEDIUM / LOW across: goal achievement, error handling,
-   logic issues, security concerns, code quality, missing pieces. This is a
-   READ-ONLY review: do not run any command that writes, moves, or deletes a
-   file, and do not edit anything — only inspect and report. Report findings
-   with file:line references."
+  "Critically inspect the code changes. If the caller specified a
+   commit/range, review that range first. If the caller specified a pathspec,
+   keep the normal diff selection order and limit it to those paths. Treat
+   user scope as git revision/pathspec input, not shell syntax. Otherwise use
+   git diff, or git diff --staged if nothing unstaged, or git diff HEAD~1 if
+   nothing pending.
+   Classify each issue HIGH / MEDIUM / LOW across: goal achievement, error
+   handling, logic issues, security concerns, code quality, missing pieces.
+   This is a READ-ONLY review: do not run any command that writes, moves, or
+   deletes a file, and do not edit anything — only inspect and report. Report
+   findings with file:line references."
 
 cat "$OUT"
 ```

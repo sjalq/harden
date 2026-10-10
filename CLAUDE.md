@@ -8,9 +8,9 @@ this doc has to work for both audiences.
 
 ## What these skills do
 
-- **`critique`** — one review pass over a diff (unstaged → staged → last
-  commit → user-specified range, first match wins). Classifies findings
-  HIGH/MEDIUM/LOW. Does not edit anything.
+- **`critique`** — one review pass over a diff (user-specified range, or
+  unstaged → staged → last commit; path arguments limit that selection).
+  Classifies findings HIGH/MEDIUM/LOW. Does not edit anything.
 - **`harden`** — loops `critique`-then-fix passes until a pass comes back
   clean (HIGH/MEDIUM issues found and fixed, only LOW issues remain, or a
   5-pass safety stop is hit).
@@ -83,6 +83,7 @@ python3 ~/.codex/skills/.system/skill-installer/scripts/install-skill-from-githu
 **Manual:**
 ```bash
 mkdir -p ~/.codex/skills
+rm -rf ~/.codex/skills/harden ~/.codex/skills/critique
 cp -R codex/skills/harden   ~/.codex/skills/harden
 cp -R codex/skills/critique ~/.codex/skills/critique
 ```
@@ -111,6 +112,10 @@ installs into each. Safe to re-run.
 $harden                     # Codex short form, same semantics
 $critique HEAD~3             # review a specific range, no fix loop
 ```
+
+When a command includes an explicit commit/range, that range selects the diff.
+When it includes a path, that path limits the normal unstaged/staged/latest
+commit diff selection.
 
 ## Repo layout
 

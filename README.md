@@ -3,13 +3,25 @@
 Two agent skills — `critique` and `harden` — for both **Claude Code** and
 **Codex CLI**.
 
-- `critique` — one severity-tagged review pass (HIGH/MEDIUM/LOW) over a
-  diff. Read-only, no loop.
-- `harden` — loops fresh critique-then-fix passes until a pass comes back
-  clean. **Every pass runs in a brand-new sub-agent with no memory of prior
-  passes** — that's the entire mechanism that keeps the loop honest, and
-  it's non-negotiable in both implementations (a new Claude `Task` call, or
-  a new `codex exec` subprocess, per pass — never a resumed/reused one).
+- `harden` — two strictly separate phases:
+  1. **Discover.** Run N consecutive, read-only critique rounds (default 5),
+     each in a brand-new sub-agent. Every round sees the same frozen scope
+     plus a compact list of defects already found, so it hunts for *new*
+     defects instead of repeating old ones. Findings are deduplicated by root
+     cause into one canonical ledger with stable `C001`, `C002`... IDs.
+  2. **Fix once.** One brand-new fixer gets the whole ledger, fixes every
+     confirmed defect of any severity in one cohesive change, runs the
+     build and tests, and reports each ID as `FIXED`, `REJECTED` or
+     `BLOCKED`. No second fixer, no fix/re-review ping-pong.
+- `critique` — the read-only discovery phase on its own.
+  - Claude: the same multi-round ledger workflow `harden` uses (default 5
+    rounds, `/critique 1` for a single round).
+  - Codex: one severity-tagged review pass (HIGH/MEDIUM/LOW) over a diff.
+
+**Every reviewer and the fixer run in a fresh sub-agent with no memory of
+earlier rounds** (a new Claude `Agent`/`Task` call, or a new `codex exec`
+subprocess, never a resumed or forked one). That isolation, plus the
+read-only discovery phase, is what keeps the result honest.
 
 ## Install
 
@@ -19,7 +31,8 @@ cd harden
 ./install.sh            # installs for whichever of Claude/Codex is present
 ```
 
-Or just Claude / just Codex:
+Or just Claude / just Codex (these force the install even if the tool is
+not detected):
 
 ```bash
 ./install.sh --claude
@@ -37,23 +50,33 @@ detail. That's the whole install.
 
 ## Usage
 
+Both `harden` forms and the Claude `critique` take an optional round count
+followed by an optional scope: `[rounds] [scope]`.
+
 ```
-/harden                # Claude: harden the current diff (unstaged → staged → last commit)
-/harden api/            # scoped to a subfolder
-/critique HEAD~3         # Claude: review a specific range, no fix loop
-$harden                  # Codex: same, short form
-$critique                # Codex: same, short form
+/harden                    # Claude: 5 critique rounds over pending changes, then one fix pass
+/harden 3                  # Claude: 3 critique rounds, then one fix pass
+/harden 7 HEAD~2..HEAD     # Claude: 7 rounds over that range, then one fix pass
+/critique                  # Claude: 5 read-only rounds, ledger only, no fixes
+/critique 1 api/           # Claude: one read-only round scoped to api/
+$harden                    # Codex: same two-phase harden
+$critique HEAD~3           # Codex: one review pass over that range
 ```
 
-## Why "fresh sub-agent per pass" matters
+With no scope, the whole pending worktree is reviewed (staged, unstaged and
+relevant untracked files), or the latest commit when the tree is clean. If the
+scope changes while critique rounds are running, the run stops with
+`SCOPE_DRIFT` and never reverts anyone's work. Nothing is staged or committed
+unless you ask for it.
 
-A hardening loop that critiques its own fixes with the same context that
-produced them just confirms its own homework. Fresh eyes on every pass is
-the entire value proposition — so both skill definitions spell this out as
-a hard requirement, not a style preference, and show the exact command
-(`Task` tool call / `codex exec` invocation) to use so an agent following
-the instructions can't accidentally collapse the loop into one long,
-self-biased session.
+## Why discovery and repair are separate
+
+A loop that critiques its own fixes with the context that produced them just
+confirms its own homework, and a critique-fix-critique loop tends to chase
+the newest fix while older, deeper defects get lost. Collecting every defect
+first, from several fresh reviewers that are told what is already known, gives
+one complete picture. A single fixer then repairs the whole ledger coherently,
+with evidence for every item it rejects.
 
 ## License
 

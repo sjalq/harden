@@ -1,57 +1,65 @@
 ---
-description: Harden mode - loop fresh critique→fix sub-agents until only minor issues remain.
-allowed-tools: Task, Read, Bash, Grep, Glob, TodoWrite
+description: Run multi-round read-only critique, then fix the consolidated defect ledger once.
+argument-hint: "[rounds] [scope]"
+disable-model-invocation: true
+allowed-tools: Skill, Agent, Task, Read, Bash, Grep, Glob, TodoWrite
 ---
 
-You are the orchestrator for a hardening loop. You do NOT review or edit code
-yourself — each pass runs in a **fresh sub-agent** so it starts with no prior
-bias from earlier passes. This is not optional: reusing your own context, or
-having the same sub-agent do pass 2 after pass 1, defeats the purpose of the
-loop. Every single pass must be a brand-new sub-agent with zero memory of
-prior passes.
+# Harden
 
-## SCOPE (same selection as /critique)
+You are the ROOT ORCHESTRATOR. Discovery and repair are separate phases. You
+do not review or edit code yourself.
 
-Pick the diff to harden, first match wins:
-- Unstaged changes exist → `git diff`
-- Only staged changes → `git diff --staged`
-- No pending changes → latest commit `git diff HEAD~1`
-- User specified a commit/range in $ARGUMENTS → use that
+`/harden` accepts the same arguments as `/critique`: an optional positive round
+count followed by an optional scope. The default is 5 rounds.
 
-Resolve the scope once, up front, and pass the SAME scope to every sub-agent.
+CRITIQUE_CALLER: harden
 
-## LOOP
-
-Repeat until a pass reports only minor (LOW) issues, or nothing changed:
-
-1. Spawn a **fresh** sub-agent (Task tool, subagent_type "general-purpose")
-   with the scope and these instructions. Do not reuse a prior sub-agent,
-   do not continue this conversation yourself — a brand new Task call, every
-   pass, with no shared memory of previous passes:
-
-   > Critically inspect the code changes in <SCOPE>. Classify each issue
-   > HIGH / MEDIUM / LOW using the /critique focus areas (goal achievement,
-   > error handling, logic, security, code quality, missing pieces).
-   > FIX every HIGH and MEDIUM issue directly in the code. Verify it still
-   > compiles/builds. Do NOT touch LOW issues. Then report back as your final
-   > message ONLY:
-   >   VERDICT: CLEAN   (no HIGH/MEDIUM found this pass)
-   >   VERDICT: FIXED   (fixed >=1 HIGH/MEDIUM)
-   >   followed by a short bullet list of what was found + fixed, and any
-   >   remaining LOW issues.
-
-2. Read the sub-agent's verdict:
-   - `VERDICT: FIXED` → loop again with a new fresh sub-agent (the fixes may
-     have introduced or exposed new issues).
-   - `VERDICT: CLEAN` → stop. Only minor issues remain.
-
-3. Safety stop: if you have run 5 passes, stop and report — a still-dirty diff
-   after 5 rounds means something needs a human.
-
-## REPORT
-
-After the loop, summarize to the user: number of passes, what each pass fixed,
-and the remaining LOW issues from the final pass. Do not change git state
-(no commits/staging) unless $ARGUMENTS says to.
-
+<CRITIQUE_CALLER_ARGUMENTS>
 $ARGUMENTS
+</CRITIQUE_CALLER_ARGUMENTS>
+
+## Phase 1: discover defects
+
+Load the `critique` skill exactly once with the Skill tool. Do not type a nested
+`/critique` command and do not duplicate or replace its review procedure here.
+Execute the loaded workflow using `CRITIQUE_CALLER_ARGUMENTS` above.
+
+Wait until all requested consecutive, read-only rounds are complete and its
+canonical defect ledger exists. Do not permit any code change during this
+phase. If it reports `SCOPE_DRIFT` or cannot finish, stop without fixing.
+
+If the canonical ledger is empty, report the critique rounds and stop without
+spawning a fixer.
+
+## Phase 2: fix once
+
+Spawn exactly one brand-new `general-purpose` fixer in blocking or foreground
+mode. Pass it:
+
+- the same resolved scope, intended goal, and acceptance criteria;
+- the complete canonical ledger with stable `C###` IDs and evidence;
+- the current project instructions and relevant test commands.
+
+Give the fixer these instructions:
+
+> This is the only fixing round. Do not spawn agents, invoke skills, or start
+> another critique/fix loop. Validate every ledger item against the code. Fix
+> every confirmed actionable defect, regardless of severity, in one cohesive
+> implementation. Add or update meaningful regression tests where appropriate.
+> Run the relevant formatter, compiler, targeted tests, and broader test suite.
+> Repair failures caused by your changes within this same turn. Do not stage or
+> commit unless the original user arguments explicitly requested it.
+>
+> Report every ledger ID as `FIXED`, `REJECTED`, or `BLOCKED`. For `FIXED`, list
+> changed files and verification. For `REJECTED`, give concrete evidence that
+> the finding was invalid. For `BLOCKED`, state the unresolved requirement.
+
+Do not launch a second fixer after it returns.
+
+## Report
+
+Report the requested and completed critique rounds, findings per round, the
+canonical ledger, every fix disposition, tests/builds run, remaining blocked
+items, and final unstaged git state. Do not commit or stage unless explicitly
+requested.

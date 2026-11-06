@@ -1,7 +1,7 @@
 interface:
   display_name: "Harden"
-  short_description: "Loop fresh codex-exec sub-agents until clean"
-  default_prompt: "Use $harden [path/to/subfolder] to loop fresh critique-then-fix codex exec sub-agents over the current diff until only minor issues remain."
+  short_description: "Collect defects in fresh reviews, then fix once"
+  default_prompt: "Use $harden [rounds] [scope] to run fresh read-only critiques, consolidate the defect ledger, and make one cohesive fix pass."
 
 policy:
   allow_implicit_invocation: true

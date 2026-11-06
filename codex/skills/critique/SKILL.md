@@ -1,6 +1,6 @@
 ---
 name: critique
-description: Critically inspect code changes and determine if they accomplish their goal and if they have any serious deficits. Use for a single, thorough review pass — not a fix loop (see the `harden` skill for that).
+description: Critically inspect code changes and determine if they accomplish their goal and if they have any serious deficits. Use for a single, thorough review pass. For multi-round discovery followed by one fix pass, use the `harden` skill.
 metadata:
   short-description: One-pass code review with severity-tagged findings
 ---
@@ -9,8 +9,8 @@ metadata:
 
 Critically inspect code changes and determine if they accomplish their goal
 and if they have any serious deficits. This is a single review pass — it
-does not fix anything and it does not loop. For an automated fix loop, use
-the `harden` skill instead.
+does not fix anything and it does not loop. To collect defects over several
+fresh rounds and then fix them once, use the `harden` skill instead.
 
 **What to inspect:**
 - If there are unstaged changes, review those (`git diff`)
@@ -58,14 +58,12 @@ cat "$OUT"
 If you (the orchestrator) are not yourself already sandboxed, `-s read-only`
 is the more conservative choice here and enforces no-edits at the OS level
 instead of by instruction alone — use it in that case. But if you're running
-nested inside another sandboxed session (the common case — see the `harden`
-skill's "Gotcha" section), a nested `-s read-only` fails every shell command
+nested inside another sandboxed session (the common case), a nested `-s read-only` fails every shell command
 with `sandbox_apply: Operation not permitted` before it ever sees the diff,
 the same way nested `workspace-write` does. `--dangerously-bypass-approvals-
 and-sandbox` is the fix, same rationale as `harden`: you're already
 externally sandboxed, so the "no edits" guarantee now rests on the explicit
 instruction above rather than the OS sandbox — treat that instruction as
-load-bearing, don't drop it when adapting this prompt. This is exactly what
-the `harden` skill does per loop iteration (with `workspace-write` semantics
-instead, since it needs to apply fixes) — see that skill for fix-and-reloop
-behavior instead of a single report.
+load-bearing, don't drop it when adapting this prompt. The `harden` skill
+uses the same invocation for each of its read-only reviewers and for its
+single fixer.
